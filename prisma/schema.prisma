@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecommendationType {
+  BUY
+  WATCHLIST
+  VALUE_PICK
+}
+
+enum RecommendationStatus {
+  active
+  closed
+  ignored
+}
+
+enum DrawingType {
+  trend_line
+  horizontal_line
+  vertical_line
+  ray_line
+  freehand
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String?
+  passwordHash    String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  watchlists      Watchlist[]
+  scannerRuns     ScannerRun[]
+  recommendations Recommendation[]
+  drawings        ChartDrawing[]
+}
+
+model BrokerConnection {
+  id            String   @id @default(cuid())
+  provider      String
+  clientCode    String
+  apiKeyHint    String?
+  accessToken   String?
+  refreshToken  String?
+  feedToken     String?
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([provider, clientCode])
+}
+
+model Symbol {
+  id           String   @id @default(cuid())
+  exchange     String
+  token        String
+  symbol       String
+  tradingSymbol String
+  companyName  String
+  instrumentType String?
+  createdAt    DateTime @default(now())
+
+  candles      HistoricalCandle[]
+  snapshots    PriceSnapshot[]
+
+  @@unique([exchange, token])
+  @@index([symbol])
+  @@index([tradingSymbol])
+}
+
+model Watchlist {
+  id        String          @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WatchlistItem[]
+
+  @@index([userId])
+}
+
+model WatchlistItem {
+  id          String    @id @default(cuid())
+  watchlistId String
+  symbol      String
+  exchange    String
+  token       String
+  companyName String
+  addedAt     DateTime  @default(now())
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, exchange, token])
+}
+
+model HistoricalCandle {
+  id        String   @id @default(cuid())
+  symbolId  String
+  interval  String
+  time      DateTime
+  open      Decimal
+  high      Decimal
+  low       Decimal
+  close     Decimal
+  volume    BigInt
+  symbol    Symbol   @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@unique([symbolId, interval, time])
+  @@index([symbolId, interval, time])
+}
+
+model ScannerCondition {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  expression  String
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model ScannerRun {
+  id        String          @id @default(cuid())
+  userId    String
+  scope     String
+  createdAt DateTime        @default(now())
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  results   ScannerResult[]
+
+  @@index([userId, createdAt])
+}
+
+model ScannerResult {
+  id               String     @id @default(cuid())
+  scannerRunId     String
+  symbol           String
+  exchange         String
+  token            String
+  companyName      String
+  currentPrice     Decimal
+  bookValuePerShare Decimal
+  difference       Decimal
+  discountPercent  Decimal
+  volume           BigInt
+  dayOpen          Decimal
+  dayHigh          Decimal
+  dayLow           Decimal
+  dayClose         Decimal
+  recommendationStatus String @default("new")
+  reason           String
+  createdAt        DateTime   @default(now())
+  scannerRun       ScannerRun @relation(fields: [scannerRunId], references: [id], onDelete: Cascade)
+
+  @@index([scannerRunId])
+  @@index([symbol])
+}
+
+model Recommendation {
+  id                  String               @id @default(cuid())
+  userId              String
+  symbol              String
+  exchange            String
+  token               String
+  companyName         String
+  type                RecommendationType
+  recommendedPrice    Decimal
+  currentPriceAtRecommendation Decimal
+  bookValue           Decimal
+  reason              String
+  scannerCondition    String
+  initialOhlcSnapshot Json
+  status              RecommendationStatus @default(active)
+  notes               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  closedAt            DateTime?
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger              RecommendationLedger?
+
+  @@index([userId, status, createdAt])
+  @@index([symbol])
+}
+
+model RecommendationLedger {
+  id                String         @id @default(cuid())
+  recommendationId  String         @unique
+  quantity          Int?
+  highestPrice      Decimal?
+  lowestPrice       Decimal?
+  notes             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  recommendation    Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+}
+
+model ChartDrawing {
+  id        String      @id @default(cuid())
+  userId    String
+  symbol    String
+  exchange  String
+  token     String
+  type      DrawingType
+  payload   Json
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, symbol])
+}
+
+model PriceSnapshot {
+  id        String   @id @default(cuid())
+  symbolId  String
+  price     Decimal
+  open      Decimal?
+  high      Decimal?
+  low       Decimal?
+  close     Decimal?
+  volume    BigInt?
+  capturedAt DateTime @default(now())
+  symbol    Symbol   @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@index([symbolId, capturedAt])
+}
